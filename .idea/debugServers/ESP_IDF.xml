@@ -1,0 +1,6 @@
+<component name="DebugServers">
+  <esp-idf-debug-target name="ESP-IDF" uniqueID="dbc31b7b-f139-4a53-9aee-e4f6cdc6fd11" selected="true">
+    <console enabled="false" />
+    <target uart="/dev/ttyACM0" />
+  </esp-idf-debug-target>
+</component>

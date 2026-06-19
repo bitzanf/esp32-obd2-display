@@ -1,0 +1,4 @@
+cmake-build*
+components/lvgl__lvgl/demos
+components/lvgl__lvgl/src/demos
+components/lvgl__lvgl/examples
