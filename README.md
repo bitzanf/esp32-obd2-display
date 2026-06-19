@@ -1,6 +1,9 @@
 | Supported Targets | ESP32-S3 |
 | ----------------- | -------- |
 
+The original version of this example can be obtained from WaveShare:
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8C/ESP32-S3-Touch-LCD-2.8C-Demo.zip
+
 # RGB LCD Panel Example
 
 [esp_lcd](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/lcd.html) supports RGB interfaced LCD panel, with one or two frame buffer(s) managed by the driver itself.
