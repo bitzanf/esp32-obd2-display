@@ -9,6 +9,10 @@
 #include "ST7701S.h"
 #include "GT911.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define EXAMPLE_LVGL_TICK_PERIOD_MS    2
 
 extern lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
@@ -20,3 +24,7 @@ void example_increase_lvgl_tick(void *arg);
 void example_touchpad_read( lv_indev_drv_t * drv, lv_indev_data_t * data );
 
 void LVGL_Init(void);
+
+#ifdef __cplusplus
+}
+#endif

@@ -21,7 +21,9 @@
 #include "I2C_Driver.h"
 #include "ST7701S.h"
 
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @brief Create a new GT911 touch driver
@@ -67,3 +69,7 @@ esp_err_t esp_lcd_touch_new_i2c_gt911(const esp_lcd_panel_io_handle_t io, const 
 extern esp_lcd_touch_handle_t tp;
 
 void Touch_Init(void);
+
+#ifdef __cplusplus
+}
+#endif

@@ -12,6 +12,10 @@
 #include "TCA9554PWR.h"
 #include "LVGL_Driver.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SPI_METHOD 1
 #define IOEXPANDER_METHOD 0
 
@@ -74,7 +78,6 @@ extern SemaphoreHandle_t sem_vsync_end;
 extern SemaphoreHandle_t sem_gui_ready;
 #endif
 
-
 extern esp_lcd_panel_handle_t panel_handle;
 extern uint8_t LCD_Backlight;
 
@@ -104,3 +107,7 @@ void LCD_Init(void);
 /********************* BackLight *********************/
 void Backlight_Init(void);
 void Set_Backlight(uint8_t Light);
+
+#ifdef __cplusplus
+}
+#endif
