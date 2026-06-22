@@ -5,9 +5,11 @@
 #include "nvs_flash.h"
 
 #include "ST7701S.h"
+#include "GT911.h"
 #include "LVGL_Driver.h"
 
 #include "BleManager.hpp"
+#include "MockImpl.hpp"
 #include "Obd2Manager.hpp"
 #include "UIManager.hpp"
 
@@ -29,22 +31,17 @@ void Driver_Init()
 {
     NVS_Init();
     I2C_Init();
+    Touch_Init();
     EXIO_Init();
 }
 
 void Application_Init() {
     ble = new BleManager;
-    obd2 = new Obd2Manager(*ble);
-    ui = new UIManager(*obd2);
+    obd2 = new Obd2Manager(ble);
+    ui = new UIManager(obd2);
 }
 
-[[noreturn]] void u_main() {
-    Driver_Init();
-    LCD_Init();
-    LVGL_Init();
-
-    Application_Init();
-
+void Application_Start() {
     ble->startScanAndConnect();
     if (!ble->isConnected()) {
         ESP_LOGW("MAIN", "Waiting for BLE connection...");
@@ -56,6 +53,23 @@ void Application_Init() {
 
     obd2->initAdapter();
     ui->startPollingTask();
+}
+
+void MockApp_Init() {
+    static MockObdDataProvider mockObd;
+    ui = new UIManager(&mockObd);
+
+    ui->startPollingTask();
+}
+
+[[noreturn]] void u_main() {
+    Driver_Init();
+    LCD_Init();
+    LVGL_Init();
+
+    //Application_Init();
+    //Application_Start();
+    MockApp_Init();
 
     while (true) {
         // raise the task priority of LVGL and/or reduce the handler period can improve the performance

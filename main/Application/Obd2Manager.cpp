@@ -2,7 +2,9 @@
 
 #include "BleManager.hpp"
 
-Obd2Manager::Obd2Manager(BleManager &bleManager) : ble(&bleManager) {
+Obd2Manager::Obd2Manager(IBluetooth* bleManager) : ble(bleManager) {
+    assert(ble);
+
     ble->registerNotificationCallback([this](const std::vector<uint8_t> &data) {
         handleBleNotification(data);
     });
@@ -14,15 +16,15 @@ Obd2Manager::Obd2Manager(BleManager &bleManager) : ble(&bleManager) {
 void Obd2Manager::initAdapter() {
     ESP_LOGI(OBD_TAG, "Initializing OBD-II adapter...");
 
-    std::string response = sendCommand("ATZ");
+    std::string response = sendCommand("ATZ", DEFAULT_TIMEOUT_MS);
     ESP_LOGI(OBD_TAG, "Adapter reset response: %s", response.c_str());
     vTaskDelay(pdMS_TO_TICKS(1000));  // Wait for adapter to reset
 
     // disable echo
-    sendCommand("ATE0");
+    response = sendCommand("ATE0", DEFAULT_TIMEOUT_MS);
 
     // automatic protocol select
-    sendCommand("ATSP0");
+    response = sendCommand("ATSP0", DEFAULT_TIMEOUT_MS);
 
     ESP_LOGI(OBD_TAG, "Adapter initialized.");
 }

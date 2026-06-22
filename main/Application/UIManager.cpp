@@ -5,7 +5,9 @@
 
 #include "esp_log.h"
 
-UIManager::UIManager(Obd2Manager &obd2Manager) : obd2(&obd2Manager) { // NOLINT(*-pro-type-member-init)
+UIManager::UIManager(IObd2* obd2Manager) : obd2(obd2Manager) { // NOLINT(*-pro-type-member-init)
+    assert(obd2);
+
     uiQueueHandle = xQueueCreate(10, sizeof(UIUpdateMessage));
     if (uiQueueHandle == nullptr) {
         throw std::runtime_error("Failed to create UI update queue");
@@ -75,6 +77,7 @@ void UIManager::initPidTracking() {
     trackedPids = {
         {0x0C, rpmLabel, [](const std::span<const uint8_t> data) {
             if (data.size() < 2) return std::string("---");
+            // ReSharper disable once CppRedundantParentheses
             const int rpm = ((data[0] << 8) | data[1]) / 4;
             return "RPM: " + std::to_string(rpm);
         }},
@@ -97,7 +100,7 @@ void UIManager::pollRegisteredPids() {
         try {
             command = std::format("01 {:02X}", pid);
 
-            const auto response = obd2->sendCommand(command);
+            const auto response = obd2->sendCommand(command, Obd2Manager::DEFAULT_TIMEOUT_MS);
             const auto bytes = Obd2Manager::hexStringToBytes(response);
 
             if (bytes.size() < 2) {

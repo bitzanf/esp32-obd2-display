@@ -10,9 +10,9 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
-#define UI_TAG "UI_MGR"
+#include "Interfaces.hpp"
 
-class Obd2Manager;
+#define UI_TAG "UI_MGR"
 
 struct UIUpdateMessage {
     lv_obj_t* target;
@@ -27,7 +27,7 @@ struct ObdPid {
 
 class UIManager {
 public:
-    explicit UIManager(Obd2Manager& obd2Manager);
+    explicit UIManager(IObd2* obd2Manager);
     ~UIManager();
 
     UIManager(const UIManager& other) = delete;
@@ -39,7 +39,7 @@ public:
     void startPollingTask();
 
 private:
-    Obd2Manager* obd2;
+    IObd2* obd2;
     TaskHandle_t pollingTaskHandle;
     QueueHandle_t uiQueueHandle;
 
@@ -53,7 +53,7 @@ private:
     void initPidTracking();
 
     void pollRegisteredPids();
-    bool waitForAdapter() const;
+    [[nodiscard]] bool waitForAdapter() const;
 
     static void pollingTask(void* param);
 };

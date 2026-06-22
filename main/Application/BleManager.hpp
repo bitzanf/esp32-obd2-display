@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "Interfaces.hpp"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
 
@@ -15,7 +16,7 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-class BleManager {
+class BleManager : public IBluetooth {
 public:
     using NotificationCallback = std::function<void(const std::vector<uint8_t>& data)>;
     using DisconnectCallback = std::function<void()>;
@@ -26,18 +27,19 @@ public:
     static constexpr auto DEFAULT_RX_CHAR_UUID = "00002af0-0000-1000-8000-00805f9b34fb";
 
     BleManager();
-    ~BleManager() = default;
+    ~BleManager() override = default;
 
     BleManager(const BleManager&) = delete;
     BleManager& operator=(const BleManager&) = delete;
 
-    void registerNotificationCallback(const NotificationCallback &callback);
-    void registerDisconnectCallback(const DisconnectCallback &callback);
+    void registerNotificationCallback(const NotificationCallback &callback) override;
+    void registerDisconnectCallback(const DisconnectCallback &callback) override;
+
+    void writeData(const std::string& data) const override;
 
     void startScanAndConnect(const std::string& targetDeviceName = "IOS-Vlink");
-    void writeData(const std::string& data) const;
 
-    [[nodiscard]] bool isConnected() const { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
+    [[nodiscard]] bool isConnected() const override { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
 
 private:
     //NimBLE callbacks

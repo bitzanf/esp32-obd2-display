@@ -3,6 +3,7 @@ idf_component_register(
                               "Application/BleManager.cpp"
                               "Application/Obd2Manager.cpp"
                               "Application/UIManager.cpp"
+                              "Application/MockImpl.cpp" # temporary for testing
                               "EXIO/TCA9554PWR.c"
                               "LCD_Driver/ST7701S.c" 
                               "Touch_Driver/GT911.c"
