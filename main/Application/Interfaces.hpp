@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <span>
 
 class IBluetooth {
 public:
@@ -28,6 +29,15 @@ public:
     [[nodiscard]] virtual bool isConnected() const = 0;
 
     [[nodiscard]] virtual std::string sendCommand(const std::string& cmd, uint32_t timeout_ms) = 0;
+};
+
+class IObdPid {
+public:
+    virtual ~IObdPid() = default;
+
+    [[nodiscard]] virtual const std::string& getCommand() const = 0;
+    virtual void parse(std::span<const uint8_t> data) = 0;
+    virtual void updateUI() = 0;
 };
 
 #endif //ESP32_OBD2_DISPLAY_INTERFACES_HPP

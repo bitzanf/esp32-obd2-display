@@ -41,6 +41,12 @@ void Application_Init() {
     ui = new UIManager(obd2);
 }
 
+void Application_DeInit() {
+    delete ui;
+    delete obd2;
+    delete ble;
+}
+
 void Application_Start() {
     ble->startScanAndConnect();
     if (!ble->isConnected()) {
@@ -60,6 +66,25 @@ void MockApp_Init() {
     ui = new UIManager(&mockObd);
 
     ui->startPollingTask();
+}
+
+void criticalError() {
+    if (!lv_is_initialized()) {
+        ESP_LOGE("MAIN", "critical error; LVGL is not initialized");
+        return;
+    }
+
+    static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_text_font(&style, &lv_font_montserrat_24);
+    lv_style_set_text_color(&style, lv_palette_main(LV_PALETTE_RED));
+    lv_style_set_bg_color(&style, lv_color_black());
+
+    auto* scr = lv_scr_act();
+    auto* lbl = lv_label_create(scr);
+    lv_label_set_text(lbl, "CRITICAL ERROR");
+    lv_obj_add_style(lbl, &style, 0);
+    lv_obj_center(lbl);
 }
 
 [[noreturn]] void u_main() {
@@ -86,5 +111,8 @@ extern "C" void app_main(void)
         u_main();
     } catch (std::exception &e) {
         ESP_LOGE("APP_MAIN", "Exception: %s", e.what());
+        criticalError();
     }
+
+    Application_DeInit();
 }

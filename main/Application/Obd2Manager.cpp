@@ -13,6 +13,11 @@ Obd2Manager::Obd2Manager(IBluetooth* bleManager) : ble(bleManager) {
     });
 }
 
+Obd2Manager::~Obd2Manager() {
+    ble->registerNotificationCallback(nullptr);
+    ble->registerDisconnectCallback(nullptr);
+}
+
 void Obd2Manager::initAdapter() {
     ESP_LOGI(OBD_TAG, "Initializing OBD-II adapter...");
 
@@ -29,7 +34,7 @@ void Obd2Manager::initAdapter() {
     response = sendCommand("ATSH 81 10 F1", DEFAULT_TIMEOUT_MS);
     response = sendCommand("ATSI", 10000);
 
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    //vTaskDelay(pdMS_TO_TICKS(3000));
 
     ESP_LOGI(OBD_TAG, "Adapter initialized.");
 }

@@ -1,14 +1,16 @@
 #include "UIManager.hpp"
 #include "Obd2Manager.hpp"
+#include "UIParsers/RPM.hpp"
 
 #include <stdexcept>
 
 #include "esp_log.h"
+#include "UIParsers/SimpleLabel.hpp"
 
 UIManager::UIManager(IObd2* obd2Manager) : obd2(obd2Manager) { // NOLINT(*-pro-type-member-init)
     assert(obd2);
 
-    uiQueueHandle = xQueueCreate(10, sizeof(UIUpdateMessage));
+    uiQueueHandle = xQueueCreate(10, sizeof(IObdPid*));
     if (uiQueueHandle == nullptr) {
         throw std::runtime_error("Failed to create UI update queue");
     }
@@ -22,15 +24,17 @@ UIManager::~UIManager() {
     if (pollingTaskHandle) vTaskDelete(pollingTaskHandle);
     if (uiQueueHandle) vQueueDelete(uiQueueHandle);
 
-    if (rpmLabel) lv_obj_del(rpmLabel);
+    if (rpmMeter) lv_obj_del(rpmMeter);
+    if (speedLabel) lv_obj_del(speedLabel);
+    if (temperatureLabel) lv_obj_del(temperatureLabel);
 }
 
 void UIManager::processUIUpdates() const {
-    UIUpdateMessage msg; // NOLINT(*-pro-type-member-init)
+    IObdPid* ptr; // NOLINT(*-pro-type-member-init)
 
-    while (xQueueReceive(uiQueueHandle, &msg, 0) == pdTRUE) {
-        if (msg.target != nullptr) {
-            lv_label_set_text(msg.target, msg.text);
+    while (xQueueReceive(uiQueueHandle, &ptr, 0) == pdTRUE) {
+        if (ptr) {
+            ptr->updateUI();
         }
     }
 }
@@ -51,29 +55,65 @@ void UIManager::startPollingTask() {
 
 void UIManager::createLayout() {
     auto* scr = lv_scr_act();
+    auto* display = lv_obj_get_disp(scr);
+    const auto xres = lv_disp_get_hor_res(display);
+    const auto yres = lv_disp_get_ver_res(display);
+
+    auto* theme = lv_theme_default_init(
+        display,
+        lv_palette_main(LV_PALETTE_BLUE),
+        lv_palette_main(LV_PALETTE_CYAN),
+        true,
+        LV_FONT_DEFAULT
+    );
+    lv_disp_set_theme(display, theme);
 
     static lv_style_t style;
     lv_style_init(&style);
-    lv_style_set_text_font(&style, &lv_font_montserrat_16);
+    lv_style_set_text_font(&style, &lv_font_montserrat_24);
 
-    // RPM label
-    rpmLabel = lv_label_create(scr);
-    lv_obj_add_style(rpmLabel, &style, 0);
-    lv_label_set_text(rpmLabel, "RPM: ---");
-    lv_obj_align(rpmLabel, LV_ALIGN_TOP_MID, 0, 40);
-/*
+    // RPM
+    rpmMeter = lv_meter_create(scr);
+    lv_obj_add_style(rpmMeter, &style, 0);
+    lv_obj_center(rpmMeter);
+    lv_obj_set_size(rpmMeter, xres, yres);
+
+    constexpr int min = 0;
+    constexpr int redline = 5000;
+    constexpr int max = 7000;
+    constexpr int major = 1000;
+    constexpr int minor = 100;
+
+    /*Add a scale first*/
+    auto* scale = lv_meter_add_scale(rpmMeter);
+    lv_meter_set_scale_ticks(rpmMeter, scale, (max-min)/minor + 1, 2, 10, lv_palette_main(LV_PALETTE_GREY));
+    lv_meter_set_scale_major_ticks(rpmMeter, scale, major/minor, 4, 15, lv_color_black(), 40);
+    lv_meter_set_scale_range(rpmMeter, scale, min, max, 270, 135);
+
+    /*Add a red arc to the end*/
+    auto* indic = lv_meter_add_arc(rpmMeter, scale, 3, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_meter_set_indicator_start_value(rpmMeter, indic, redline);
+    lv_meter_set_indicator_end_value(rpmMeter, indic, max);
+
+    /*Make the tick lines red at the end of the scale*/
+    indic = lv_meter_add_scale_lines(rpmMeter, scale, lv_palette_main(LV_PALETTE_RED), lv_palette_main(LV_PALETTE_RED), false, 0);
+    lv_meter_set_indicator_start_value(rpmMeter, indic, redline);
+    lv_meter_set_indicator_end_value(rpmMeter, indic, max);
+
+    /*Add a needle line indicator*/
+    rpmIndicator = lv_meter_add_needle_line(rpmMeter, scale, 4, lv_palette_main(LV_PALETTE_GREY), -10);
+
     // speed label
     speedLabel = lv_label_create(scr);
     lv_obj_add_style(speedLabel, &style, 0);
-    lv_label_set_text(speedLabel, "Speed: ---");
-    lv_obj_align(speedLabel, LV_ALIGN_CENTER, 0, -10);
+    lv_label_set_text(speedLabel, "-- km/h");
+    lv_obj_align(speedLabel, LV_ALIGN_CENTER, 0, 50);
 
-    // coolant temperature
-    coolantLabel = lv_label_create(scr);
-    lv_obj_add_style(coolantLabel, &style, 0);
-    lv_label_set_text(coolantLabel, "Coolant: ---");
-    lv_obj_align(coolantLabel, LV_ALIGN_BOTTOM_MID, 0, -40);
-*/
+    // temperature label
+    temperatureLabel = lv_label_create(scr);
+    lv_obj_add_style(temperatureLabel, &style, 0);
+    lv_label_set_text(temperatureLabel, "-- °C");
+    lv_obj_align(temperatureLabel, LV_ALIGN_CENTER, 0, 100);
 }
 
 void UIManager::initPidTracking() {
@@ -81,18 +121,26 @@ void UIManager::initPidTracking() {
     // the values are proprietary ('0x21' = KWP-2000 read at address) and undocumented unfortunately
     // so RPM is about the only thing we can reliably get...
     // AlfaOBD is the only app that seems to understand every value from the ECU
-    trackedPids = {
-        {"21301", rpmLabel, [](const std::span<const uint8_t> data) -> std::string {
-            if (data.size() < 2) return "---";
-            const int rpm = (data[0] << 8) | data[1];
-            return "RPM: " + std::to_string(rpm);
-        }}
-    };
+    trackedPids.emplace_back(std::make_unique<UIParsers::RPM>(rpmMeter, rpmIndicator));
+    trackedPids.emplace_back(std::make_unique<UIParsers::SimpleLabel>("21311", speedLabel, [](const std::span<const uint8_t> data) {
+        if (data.size() < 2) return std::string("-- km/h");
+        // 16-bit value, big-endian // TODO CHECK
+        const int raw = (data[0] << 8) | data[1];
+        return std::to_string(raw / 128) + " km/h";
+    }));
+    trackedPids.emplace_back(std::make_unique<UIParsers::SimpleLabel>("21501", temperatureLabel, [](const std::span<const uint8_t> data) {
+        if (data.empty()) return std::string("-- °C");
+        return std::to_string(data[0] - 40) + " °C";
+    }));
 }
 
-void UIManager::pollRegisteredPids() {
-    for (const auto& [command, target, parser] : trackedPids) {
+void UIManager::pollRegisteredPids() const {
+    for (auto& pid : trackedPids) {
+        const std::string *lastCommand = nullptr;
         try {
+            const auto& command = pid->getCommand();
+            lastCommand = &command;
+
             const auto response = obd2->sendCommand(command, Obd2Manager::DEFAULT_TIMEOUT_MS);
             const auto bytes = Obd2Manager::hexStringToBytes(response);
 
@@ -106,16 +154,13 @@ void UIManager::pollRegisteredPids() {
 
             // extract the payload (skip '61' and PID echo)
             std::span dataSpan(bytes.begin() + 2, bytes.end());
-            std::string parsed = parser(dataSpan);
-            std::string parsedText = parsed.empty() ? "---" : parsed;
+            pid->parse(dataSpan);
 
-            UIUpdateMessage msg{};
-            msg.target = target;
-            strncpy(msg.text, parsedText.c_str(), sizeof(msg.text) - 1);
+            const auto ptr = pid.get();
 
-            xQueueSend(uiQueueHandle, &msg, portMAX_DELAY);
+            xQueueSend(uiQueueHandle, &ptr, portMAX_DELAY);
         } catch (const std::exception& e) {
-            ESP_LOGE(UI_TAG, "Error polling %s: %s", command.c_str(), e.what());
+            ESP_LOGE(UI_TAG, "Error polling %s: %s", lastCommand ? lastCommand->c_str() : "", e.what());
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }

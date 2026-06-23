@@ -1,11 +1,9 @@
 #ifndef ESP32_OBD2_DISPLAY_UI_MANAGER_HPP
 #define ESP32_OBD2_DISPLAY_UI_MANAGER_HPP
 
-#include <functional>
-#include <string>
-#include <span>
-
+#include <memory>
 #include <lvgl.h>
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -13,17 +11,6 @@
 #include "Interfaces.hpp"
 
 #define UI_TAG "UI_MGR"
-
-struct UIUpdateMessage {
-    lv_obj_t* target;
-    char text[32];
-};
-
-struct ObdPid {
-    std::string command;
-    lv_obj_t* target;
-    std::function<std::string(std::span<const uint8_t>)> parser;
-};
 
 class UIManager {
 public:
@@ -43,16 +30,18 @@ private:
     TaskHandle_t pollingTaskHandle;
     QueueHandle_t uiQueueHandle;
 
-    lv_obj_t* rpmLabel;
-    //lv_obj_t* speedLabel;
-    //lv_obj_t* coolantLabel;
+    lv_obj_t* rpmMeter;
+    lv_meter_indicator_t* rpmIndicator;
 
-    std::vector<ObdPid> trackedPids;
+    lv_obj_t* speedLabel;
+    lv_obj_t* temperatureLabel;
+
+    std::vector<std::unique_ptr<IObdPid>> trackedPids;
 
     void createLayout();
     void initPidTracking();
 
-    void pollRegisteredPids();
+    void pollRegisteredPids() const;
     [[nodiscard]] bool waitForAdapter() const;
 
     static void pollingTask(void* param);

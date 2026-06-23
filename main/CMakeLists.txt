@@ -4,6 +4,8 @@ idf_component_register(
                               "Application/Obd2Manager.cpp"
                               "Application/UIManager.cpp"
                               "Application/MockImpl.cpp" # temporary for testing
+                              "Application/UIParsers/RPM.cpp"
+                              "Application/UIParsers/SimpleLabel.cpp"
                               "EXIO/TCA9554PWR.c"
                               "LCD_Driver/ST7701S.c" 
                               "Touch_Driver/GT911.c"

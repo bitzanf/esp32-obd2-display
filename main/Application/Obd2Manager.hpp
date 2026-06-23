@@ -20,7 +20,7 @@ public:
     constexpr static uint32_t DEFAULT_TIMEOUT_MS = 2000;
 
     explicit Obd2Manager(IBluetooth* bleManager);
-    ~Obd2Manager() override = default;
+    ~Obd2Manager() override;
 
     Obd2Manager(const Obd2Manager&) = delete;
     Obd2Manager& operator=(const Obd2Manager&) = delete;
