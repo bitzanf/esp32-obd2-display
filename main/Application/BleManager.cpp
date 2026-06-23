@@ -5,10 +5,6 @@
 #include <host/ble_hs.h>
 #include <services/gap/ble_svc_gap.h>
 
-extern "C" {
-    void ble_store_config_init() {}
-}
-
 BleManager::BleManager() { // NOLINT(*-pro-type-member-init)
     serviceUuid = {};
     txCharUuid = {};
@@ -60,8 +56,12 @@ void BleManager::startScanAndConnect(const std::string &targetDeviceName) {
     ESP_LOGI(BLE_TAG, "Started scanning for devices with name: %s", deviceName.c_str());
 }
 
+bool BleManager::isConnected() const {
+    return connHandle != BLE_HS_CONN_HANDLE_NONE && txCharHandle != 0 && rxCharHandle != 0;
+}
+
 void BleManager::writeData(const std::string &data) const {
-    if (!isConnected() || txCharHandle == 0) {
+    if (!isConnected()) {
         throw BleException("Cannot write data. Not connected or TX characteristic not found.");
     }
 

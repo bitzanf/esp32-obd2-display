@@ -39,7 +39,7 @@ public:
 
     void startScanAndConnect(const std::string& targetDeviceName = "IOS-Vlink");
 
-    [[nodiscard]] bool isConnected() const override { return connHandle != BLE_HS_CONN_HANDLE_NONE; }
+    [[nodiscard]] bool isConnected() const override;
 
 private:
     //NimBLE callbacks

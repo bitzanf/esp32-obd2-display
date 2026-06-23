@@ -20,11 +20,16 @@ void Obd2Manager::initAdapter() {
     ESP_LOGI(OBD_TAG, "Adapter reset response: %s", response.c_str());
     vTaskDelay(pdMS_TO_TICKS(1000));  // Wait for adapter to reset
 
-    // disable echo
+    // shitbox init
+    // Bosch ME7.3H4 @ KWP-2000
     response = sendCommand("ATE0", DEFAULT_TIMEOUT_MS);
+    response = sendCommand("ATSP4", DEFAULT_TIMEOUT_MS);
+    response = sendCommand("ATIIA 10", DEFAULT_TIMEOUT_MS);
+    response = sendCommand("ATKW0", DEFAULT_TIMEOUT_MS);
+    response = sendCommand("ATSH 81 10 F1", DEFAULT_TIMEOUT_MS);
+    response = sendCommand("ATSI", 10000);
 
-    // automatic protocol select
-    response = sendCommand("ATSP0", DEFAULT_TIMEOUT_MS);
+    vTaskDelay(pdMS_TO_TICKS(3000));
 
     ESP_LOGI(OBD_TAG, "Adapter initialized.");
 }
@@ -49,6 +54,7 @@ std::string Obd2Manager::sendCommand(const std::string &cmd, const uint32_t time
         formatted += '\r';
     }
 
+    ESP_LOGI(OBD_TAG, "Sending command: %s", formatted.c_str());
     ble->writeData(formatted);
 
     std::unique_lock bufferLock(bufferMutex);
@@ -64,6 +70,8 @@ std::string Obd2Manager::sendCommand(const std::string &cmd, const uint32_t time
 
     auto rawResult = rxBuffer;
     cleanResponse(rawResult);
+
+    ESP_LOGI(OBD_TAG, "Received response: %s", rawResult.c_str());
 
     if (rawResult.find("NODATA") != std::string::npos) {
         throw Obd2Exception("No OBD2 data received from ECU for command: " + cmd);

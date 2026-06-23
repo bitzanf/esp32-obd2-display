@@ -67,9 +67,9 @@ void MockApp_Init() {
     LCD_Init();
     LVGL_Init();
 
-    //Application_Init();
-    //Application_Start();
-    MockApp_Init();
+    Application_Init();
+    Application_Start();
+    //MockApp_Init();
 
     while (true) {
         // raise the task priority of LVGL and/or reduce the handler period can improve the performance

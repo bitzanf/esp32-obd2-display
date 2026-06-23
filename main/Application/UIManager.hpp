@@ -20,7 +20,7 @@ struct UIUpdateMessage {
 };
 
 struct ObdPid {
-    uint8_t pid;
+    std::string command;
     lv_obj_t* target;
     std::function<std::string(std::span<const uint8_t>)> parser;
 };
@@ -44,8 +44,8 @@ private:
     QueueHandle_t uiQueueHandle;
 
     lv_obj_t* rpmLabel;
-    lv_obj_t* speedLabel;
-    lv_obj_t* coolantLabel;
+    //lv_obj_t* speedLabel;
+    //lv_obj_t* coolantLabel;
 
     std::vector<ObdPid> trackedPids;
 

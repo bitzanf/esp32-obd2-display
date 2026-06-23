@@ -21,6 +21,8 @@ UIManager::UIManager(IObd2* obd2Manager) : obd2(obd2Manager) { // NOLINT(*-pro-t
 UIManager::~UIManager() {
     if (pollingTaskHandle) vTaskDelete(pollingTaskHandle);
     if (uiQueueHandle) vQueueDelete(uiQueueHandle);
+
+    if (rpmLabel) lv_obj_del(rpmLabel);
 }
 
 void UIManager::processUIUpdates() const {
@@ -59,7 +61,7 @@ void UIManager::createLayout() {
     lv_obj_add_style(rpmLabel, &style, 0);
     lv_label_set_text(rpmLabel, "RPM: ---");
     lv_obj_align(rpmLabel, LV_ALIGN_TOP_MID, 0, 40);
-
+/*
     // speed label
     speedLabel = lv_label_create(scr);
     lv_obj_add_style(speedLabel, &style, 0);
@@ -71,53 +73,38 @@ void UIManager::createLayout() {
     lv_obj_add_style(coolantLabel, &style, 0);
     lv_label_set_text(coolantLabel, "Coolant: ---");
     lv_obj_align(coolantLabel, LV_ALIGN_BOTTOM_MID, 0, -40);
+*/
 }
 
 void UIManager::initPidTracking() {
+    // the car is a 1999/2000 shitbox, so it of course doesn't speak standard OBD-II
+    // the values are proprietary ('0x21' = KWP-2000 read at address) and undocumented unfortunately
+    // so RPM is about the only thing we can reliably get...
+    // AlfaOBD is the only app that seems to understand every value from the ECU
     trackedPids = {
-        {0x0C, rpmLabel, [](const std::span<const uint8_t> data) {
-            if (data.size() < 2) return std::string("---");
-            // ReSharper disable once CppRedundantParentheses
-            const int rpm = ((data[0] << 8) | data[1]) / 4;
+        {"21301", rpmLabel, [](const std::span<const uint8_t> data) -> std::string {
+            if (data.size() < 2) return "---";
+            const int rpm = (data[0] << 8) | data[1];
             return "RPM: " + std::to_string(rpm);
-        }},
-        {0x0D, speedLabel, [](const std::span<const uint8_t> data) {
-            if (data.empty()) return std::string("---");
-            const int speed = data[0];
-            return "Speed: " + std::to_string(speed) + " km/h";
-        }},
-        {0x05, coolantLabel, [](const std::span<const uint8_t> data) {
-            if (data.empty()) return std::string("---");
-            const int temp = data[0] - 40;
-            return "Coolant: " + std::to_string(temp) + " °C";
         }}
     };
 }
 
 void UIManager::pollRegisteredPids() {
-    std::string command;
-    for (const auto& [pid, target, parser] : trackedPids) {
+    for (const auto& [command, target, parser] : trackedPids) {
         try {
-            command = std::format("01 {:02X}", pid);
-
             const auto response = obd2->sendCommand(command, Obd2Manager::DEFAULT_TIMEOUT_MS);
             const auto bytes = Obd2Manager::hexStringToBytes(response);
 
-            if (bytes.size() < 2) {
-                ESP_LOGW(UI_TAG, "Received too short response for PID %s (%s)", command.c_str(), response.c_str());
+            if (bytes.size() < 2) continue;
+
+            // KWP2000 Mode 21 Success Response always starts with 0x61
+            if (bytes[0] != 0x61) {
+                ESP_LOGW(UI_TAG, "Unexpected response for %s: %s", command.c_str(), response.c_str());
                 continue;
             }
 
-            if (bytes[0] != 0x41) {
-                ESP_LOGW(UI_TAG, "Unexpected response for PID %s: %s", command.c_str(), response.c_str());
-                continue;
-            }
-
-            if (bytes[1] != pid) {
-                ESP_LOGW(UI_TAG, "Response PID mismatch for %s: %s", command.c_str(), response.c_str());
-                continue;
-            }
-
+            // extract the payload (skip '61' and PID echo)
             std::span dataSpan(bytes.begin() + 2, bytes.end());
             std::string parsed = parser(dataSpan);
             std::string parsedText = parsed.empty() ? "---" : parsed;
@@ -128,9 +115,8 @@ void UIManager::pollRegisteredPids() {
 
             xQueueSend(uiQueueHandle, &msg, portMAX_DELAY);
         } catch (const std::exception& e) {
-            ESP_LOGE(UI_TAG, "Error polling PID %s: %s", command.c_str(), e.what());
+            ESP_LOGE(UI_TAG, "Error polling %s: %s", command.c_str(), e.what());
         }
-        // slight delay between individual PID queries
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
