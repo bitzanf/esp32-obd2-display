@@ -102,7 +102,7 @@ void UIManager::createLayout() {
 
     /*Add a needle line indicator*/
     rpmIndicator = lv_meter_add_needle_line(rpmMeter, scale, 4, lv_palette_main(LV_PALETTE_GREY), -10);
-
+/*
     // speed label
     speedLabel = lv_label_create(scr);
     lv_obj_add_style(speedLabel, &style, 0);
@@ -114,14 +114,18 @@ void UIManager::createLayout() {
     lv_obj_add_style(temperatureLabel, &style, 0);
     lv_label_set_text(temperatureLabel, "-- °C");
     lv_obj_align(temperatureLabel, LV_ALIGN_CENTER, 0, 100);
+*/
+    speedLabel = temperatureLabel = nullptr;
 }
 
 void UIManager::initPidTracking() {
     // the car is a 1999/2000 shitbox, so it of course doesn't speak standard OBD-II
     // the values are proprietary ('0x21' = KWP-2000 read at address) and undocumented unfortunately
     // so RPM is about the only thing we can reliably get...
-    // AlfaOBD is the only app that seems to understand every value from the ECU
+    // AlfaOBD (possibly also MultiECUScan) is the only app that seems to understand every value from the ECU
+    // https://www.alfaowner.com/threads/list-of-pids.305552/?post_id=8324898&nested_view=1#post-8324898
     trackedPids.emplace_back(std::make_unique<UIParsers::RPM>(rpmMeter, rpmIndicator));
+    /*
     trackedPids.emplace_back(std::make_unique<UIParsers::SimpleLabel>("21311", speedLabel, [](const std::span<const uint8_t> data) {
         if (data.size() < 2) return std::string("-- km/h");
         // 16-bit value, big-endian // TODO CHECK
@@ -132,6 +136,7 @@ void UIManager::initPidTracking() {
         if (data.empty()) return std::string("-- °C");
         return std::to_string(data[0] - 40) + " °C";
     }));
+    */
 }
 
 void UIManager::pollRegisteredPids() const {

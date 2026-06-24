@@ -85,6 +85,10 @@ void criticalError() {
     lv_label_set_text(lbl, "CRITICAL ERROR");
     lv_obj_add_style(lbl, &style, 0);
     lv_obj_center(lbl);
+
+    // pulse LVGL to draw the message
+    lv_timer_handler();
+    lv_timer_handler();
 }
 
 [[noreturn]] void u_main() {
