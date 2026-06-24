@@ -1,116 +1,138 @@
-| Supported Targets | ESP32-S3 |
-| ----------------- | -------- |
+# ESP32S3 LCD OBD-II Display
+This project is developed for ESP32S3 to display OBD-II data on a 2.8 inch RGB LCD panel.
+It uses the LVGL library to create a user interface that shows the engine RPM.
 
-The original version of this example can be obtained from WaveShare:
+Communication with the vehicle's ECU is done using a Bluetooth Low Energy (BLE) OBD-II adapter compatible with the ELM327 protocol.
+
+> A datasheet for the ELM327 can be found here: https://cdn.sparkfun.com/assets/learn_tutorials/8/3/ELM327DS.pdf  
+> KWP 2000 protocol documentation can be found here: https://www.internetsomething.com/kwp/KWP2000%20ISO%2014230-3.pdf  
+> K-line communication: https://www.internetsomething.com/kwp/KWP2000%20ISO%2014230-2%20KLine%20.pdf
+
+
+## Features
+The only feature implemented in this project is the display of engine RPM.
+The RPM is displayed on a gauge widget (LVGL Meter).
+
+It is not compatible with standard OBD-II PIDs, as it targets specifically a **1999/2000 Fiat Punto 1.2 16v** with the **Bosch Motronic ME7.3H4** ECU.
+
+As the vehicle predates OBD-II standardization in Europe, the ECU communicates using a proprietary protocol.
+The ECU is accessed via the KWP 2000 protocol over a K-line interface.
+The ECU address is `0x10`, and the header for requests is `81 10 F1`.
+These value are, of course, very non-standard.
+
+> [!WARNING]
+> The project is NOT compatible with modern vehicles that use the OBD-II standard.
+
+
+### Behavior
+When the ESP32S3 is powered on, it initializes the LCD and connects to the ELM327 adapter via BLE.
+Once connected, it sends the initialization commands to the ELM327 adapter to set up the connection with the ECU.
+After the connection is established, the ESP32S3 periodically sends a request to read the engine RPM from the ECU.
+The ECU responds with the engine RPM, which is then displayed on the LCD.
+
+Until the BLE connection is established, the LCD shows nothing.
+The application waits indefinitely for the connection to be established.
+Once connected, the UI is initialized and periodically updated.
+If the BLE connection is lost, the application waits for the connection to be re-established.
+Likewise, when the ECU does not respond to the initialization, the UI shows a "CRITICAL ERROR" message and stops updating until a hardware reset is performed.
+This usually happens when the engine is not running, as the ECU bus initialization then fails.
+
+Logging is done via the ESP32S3's USB serial port, which can be viewed using the `idf.py monitor` command.
+
+
+## ECU Communication
+To communicate with the ECU, the ELM327 commands are used to set up the connection and request data.
+The ELM327 adapter is connected to the ESP32S3 via Bluetooth Low Energy (BLE) using the NimBLE library.
+
+It connects specifically to a BLE device advertising itself as ``IOS-Vlink`` with the service UUID `000018f0-0000-1000-8000-00805f9b34fb`.
+After connecting, the ESP32S3 subscribes to the characteristic with UUID `00002af0-0000-1000-8000-00805f9b34fb` to receive data from the ELM327 adapter.
+To send commands to the ELM327, the ESP32S3 writes to the characteristic with UUID `00002af1-0000-1000-8000-00805f9b34fb`.
+
+
+### Initialization Sequence
+Standard ELM327 commands are used to initialize the connection with the ECU.
+
+```
+ATZ            - Reset
+ATE0           - Disable echo
+ATSP4          - Set protocol to ISO 14230-4 KWP (KWP 2000)
+ATIIA 10       - Set initialization address to 10
+ATKW0          - Disable keyword checking
+ATSH 81 10 F1  - Set header to 81 10 F1 (Fiat Proprietary)
+ATSI           - ISO Slow Init
+```
+
+After the `ATSI` command, the ELM327 adapter is ready to send requests to the ECU and receive responses.
+
+
+### Requesting ECU Data
+To request data from the ECU, the ELM327 command `21` is used, which corresponds to the "Read Data by Local Identifier" service in the KWP 2000 protocol.
+The specific local identifiers are manufacturer-specific and largely publicly unknown.
+The only known local identifier for the Fiat Punto 1.2 16v is `0x30`, which corresponds to the engine RPM.
+The request command to read the engine RPM is therefore `21301` - mode `21`, PID `30`, wait for exactly 1 response.
+
+The ECU responds with, for example, `61 30 02 AE`, where `61` indicates a successful response to a mode `21` request, `30` is the requested PID, and `02 AE` is the engine RPM - 686 (engine idle).
+Every returned value is in the big endian format.
+
+Unfortunately, no other local identifiers are currently known for this vehicle, and reverse engineering the ECU's response data or existing closed-source software is required to discover additional identifiers.
+This is however largely out of scope for this project.
+
+> [!NOTE]
+> The engine is however able to report some very interesting data, such as:
+> - Engine RPM
+> - Engine load
+> - Coolant temperature
+> - Intake air temperature
+> - Throttle pedal position
+> - Throttle valve angle
+> - Spark advance
+> - Fuel injection time
+> - Vehicle speed
+> - Intake manifold pressure
+> - Mass Air Flow (MAF)
+> 
+> Unfortunately, none of the PIDs (and formulas to parse the ECU data) for these values are known.
+> Applications such as AlfaOBD are able to read these values, but they are closed-source and the PIDs are not publicly documented.
+
+
+## Implementation
+The project is implemented using the ESP-IDF framework and the LVGL and NimBLE libraries.
+It is written in C++ with an object-oriented approach and exceptions allowed for error handling.
+
+The main components of the project are:
+- `BleManager`: Manages the BLE connection to the ELM327 adapter and handles sending and receiving data.
+- `Obd2Manager`: Manages the OBD2 communication with the ECU, including sending initialization commands and requesting data.
+- `UIManager`: Manages the user interface and periodically requests data from the `Obd2Manager` to update the display.
+
+A separate task is created for the OBD polling and the main task becomes the UI task, which is responsible for updating the display.
+
+The RPM gauge is implemented as a separate class handling the LVGL Meter widget and updating it with the latest RPM value received from the ECU.
+It also contains the specific ELM327 command to request the engine RPM from the ECU and a function to parse the ECU's response.
+
+To enable testing and a decoupled architecture, the classes implement interfaces:
+- `IBluetooth`: Defines the interface for the BLE communication and callback registration for response processing.
+- `IObd2`: Defines the interface for the OBD2 communication to initialize the ELM327 adapter and request data from the ECU.
+- `IObdPid`: Defines the interface for the OBD2 PIDs - the specific command to request data, the parsing of the response, and the update of the UI.
+
+UI update messages are sent from the OBD polling task to the UI task using a FreeRTOS queue.
+A pointer to the `IObdPid` interface instance is sent to the UI task, which then calls the `updateUI()` method.
+
+The update task polls the `IObd2` interface for new data every 500ms, and the UI task ticks the LVGL library every 10ms to update the display.
+After every command sent to the ELM327 adapter, a 100ms delay is added.
+
+Every command has a timeout of 2 seconds, after which the read attempt is aborted and the associated UI widget is not updated until a new value can be successfully obtained.
+The only exception is the `ATSI` command, which has a timeout of 10 seconds.
+
+
+## Hardware
+Developed specifically for the WaveShare 2.8" RGB LCD development board:
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.8C
+
+The project is based on the manufacturer's demo code, which can be found in the following link:
 https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8C/ESP32-S3-Touch-LCD-2.8C-Demo.zip
 
-# RGB LCD Panel Example
+The specific ELM327 BLE adapter used for testing: "Vgate iCar Pro Bluetooth 4.0".
 
-[esp_lcd](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/lcd.html) supports RGB interfaced LCD panel, with one or two frame buffer(s) managed by the driver itself.
+1999/2000 Fiat Punto 1.2 16v
 
-This example shows the general process of installing an RGB panel driver, and displays a scatter chart on the screen based on the LVGL library. For more information about porting the LVGL library, please refer to [official porting guide](https://docs.lvgl.io/master/porting/index.html). This example uses two kinds of **buffering mode** based on the number of frame buffers:
-
-| Number of Frame Buffers | LVGL buffering mode | Way to avoid tear effect                                                                                    |
-|-------------------------|---------------------|-------------------------------------------------------------------------------------------------------------|
-| 1                       | Two buffers         | Extra synchronization mechanism is needed, e.g. using semaphore.                                            |
-| 2                       | Full refresh        | There's no intersection between writing to an offline frame buffer and reading from an online frame buffer. |
-
-## How to use the example
-
-### Hardware Required
-
-* An ESP development board, which has RGB LCD peripheral supported and **Octal PSRAM** onboard
-* A general RGB panel, 16 bit-width, with HSYNC, VSYNC and DE signal
-* An USB cable for power supply and programming
-
-### Hardware Connection
-
-The connection between ESP Board and the LCD is as follows:
-
-```
-       ESP Board                           RGB  Panel
-+-----------------------+              +-------------------+
-|                   GND +--------------+GND                |
-|                       |              |                   |
-|                   3V3 +--------------+VCC                |
-|                       |              |                   |
-|                   PCLK+--------------+PCLK               |
-|                       |              |                   |
-|             DATA[15:0]+--------------+DATA[15:0]         |
-|                       |              |                   |
-|                  HSYNC+--------------+HSYNC              |
-|                       |              |                   |
-|                  VSYNC+--------------+VSYNC              |
-|                       |              |                   |
-|                     DE+--------------+DE                 |
-|                       |              |                   |
-|               BK_LIGHT+--------------+BLK                |
-+-----------------------+              |                   |
-                               3V3-----+DISP_EN            |
-                                       |                   |
-                                       +-------------------+
-```
-
-The GPIO number used by this example can be changed in [lvgl_example_main.c](main/rgb_lcd_example_main.c).
-
-Especially, please pay attention to the level used to turn on the LCD backlight, some LCD module needs a low level to turn it on, while others take a high level. You can change the backlight level macro `EXAMPLE_LCD_BK_LIGHT_ON_LEVEL` in [lvgl_example_main.c](main/rgb_lcd_example_main.c).
-
-If the RGB LCD panel only supports DE mode, you can even bypass the `HSYNC` and `VSYNC` signals, by assigning `EXAMPLE_PIN_NUM_HSYNC` and `EXAMPLE_PIN_NUM_VSYNC` with `-1`.
-
-### Configure
-
-Run `idf.py menuconfig` and go to `Example Configuration`:
-
-1. Choose whether to `Use double Frame Buffer`
-2. Choose whether to `Avoid tearing effect` (available only when step `1` was chosen to false)
-3. Choose whether to `Use bounce buffer` (available only when step `1` was chosen to false)
-
-### Build and Flash
-
-Run `idf.py -p PORT build flash monitor` to build, flash and monitor the project. A scatter chart will show up on the LCD as expected.
-
-The first time you run `idf.py` for the example will cost extra time as the build system needs to address the component dependencies and downloads the missing components from registry into `managed_components` folder.
-
-(To exit the serial monitor, type ``Ctrl-]``.)
-
-See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
-
-### Example Output
-
-```bash
-...
-I (0) cpu_start: Starting scheduler on APP CPU.
-I (856) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
-I (856) example: Create semaphores
-I (866) example: Turn off LCD backlight
-I (866) gpio: GPIO[4]| InputEn: 0| OutputEn: 1| OpenDrain: 0| Pullup: 0| Pulldown: 0| Intr:0
-I (876) example: Install RGB LCD panel driver
-I (906) example: Register event callbacks
-I (906) example: Initialize RGB LCD panel
-I (906) example: Turn on LCD backlight
-I (906) example: Initialize LVGL library
-I (916) example: Allocate separate LVGL draw buffers from PSRAM
-I (916) example: Register display driver to LVGL
-I (926) example: Install LVGL tick timer
-I (926) example: Display LVGL Scatter Chart
-...
-```
-
-## Troubleshooting
-
-* Why the LCD doesn't light up?
-  * Check the backlight's turn-on level, and update it in `EXAMPLE_LCD_BK_LIGHT_ON_LEVEL`
-* No memory for frame buffer
-  * The frame buffer of RGB panel is located in ESP side (unlike other controller based LCDs, where the frame buffer is located in external chip). As the frame buffer usually consumes much RAM (depends on the LCD resolution and color depth), we recommend to put the frame buffer into PSRAM (like what we do in this example). However, putting frame buffer in PSRAM will limit the maximum PCLK due to the bandwidth of **SPI0**.
-* LCD screen drift
-  * Slow down the PCLK frequency
-  * Adjust other timing parameters like PCLK clock edge (by `pclk_active_neg`), sync porches like VBP (by `vsync_back_porch`) according to your LCD spec
-  * Enable `CONFIG_SPIRAM_FETCH_INSTRUCTIONS` and `CONFIG_SPIRAM_RODATA`, which can saves some bandwidth of SPI0 from being consumed by ICache.
-* LCD screen tear effect
-  * Using double frame buffers
-  * Or adding an extra synchronization mechanism between writing (by Cache) and reading (by EDMA) the frame buffer.
-* Low PCLK frequency
-  * Enable `CONFIG_EXAMPLE_USE_BOUNCE_BUFFER`, which will make the LCD controller fetch data from internal SRAM (instead of the PSRAM), but at the cost of increasing CPU usage.
-  * Enable `CONFIG_SPIRAM_FETCH_INSTRUCTIONS` and `CONFIG_SPIRAM_RODATA` can also help if the you're not using the bounce buffer mode. These two configurations can save some **SPI0** bandwidth from being consumed by ICache.
-
-For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
+Bosch Motronic ME7.3H4 ECU
