@@ -120,6 +120,7 @@ A pointer to the `IObdPid` interface instance is sent to the UI task, which then
 
 The update task polls the `IObd2` interface for new data every 500ms, and the UI task ticks the LVGL library every 10ms to update the display.
 After every command sent to the ELM327 adapter, a 100ms delay is added.
+LVGL is configured to update the display every 30ms.
 
 Every command has a timeout of 2 seconds, after which the read attempt is aborted and the associated UI widget is not updated until a new value can be successfully obtained.
 The only exception is the `ATSI` command, which has a timeout of 10 seconds.
@@ -127,7 +128,7 @@ The only exception is the `ATSI` command, which has a timeout of 10 seconds.
 
 ## Details
 The code is contained in the `main` folder.
-The `main.cpp` file contains the `app_main()` function, which initializes the hardware, the LVGL library, and the BLE and OBD2 managers.
+The `main.cpp` file contains the `app_main()` function, which initializes the hardware, the LVGL library, and the BLE, OBD2, and UI managers.
 It also contains the main loop that ticks the LVGL library and handles the UI updates.
 
 The application code is stored in the `Application` subdirectory, which contains the `UIManager`, `BleManager`, and `Obd2Manager` classes.
@@ -214,6 +215,18 @@ It exists primarily for local testing of the UI without the need to connect it t
 It serves static data in response to recognized commands.
 
 
+### LVGL
+LVGL (Light & Versatile Graphics Library) is a graphics library that provides a retained mode graphics API for embedded systems.
+The library is used to create the user interface and manage the display on the LCD panel.
+It provides a wide range of UI widgets and automatically handles the user's input, although this feature is not used in this project.
+
+
+### FreeRTOS
+The ESP-IDF FreeRTOS kernel is a lightweight real-time operating system that provides multitasking and inter-task communication.
+As per Espressif's documentation, the FreeRTOS kernel is a modified version of the original FreeRTOS kernel, with additional support for multicore processors.
+FreeRTOS is used to create parallel tasks for the application and BLE communication.
+
+
 # Extending the functionality
 
 ## Registering new PIDs
@@ -283,20 +296,58 @@ The development board contains a lot of interesting peripherals:
  - Battery management
  - PCF85063 - RTC clock
  - 8 MB PSRAM
- - LCD touch interface
+ - LCD capacitive touch interface
+ - 480x480 2.8" RGB LCD panel
  - ESP32-S3R8 - Dual-core Xtensa LX7 microcontroller clocked at 240 MHz, integrated 2.4 GHz Wi-Fi and Bluetooth 5 (BLE)
 
 Most of these are left unused by this project.
 
+The board supports hardware-level debugging via JTAG (`openocd`).
+It supports both the ESP-IDF and Arduino frameworks.
+As the ESP-IDF allows for finer control over the hardware, it was chosen for this project.
+<!-- also it's just better... -->
+
 
 # Further development
-<!--
-decouple obd pids and ui (perhaps templated parsing interface + ui interface)
-decouple pid storage in uimanager and the polling order (loop though array of raw pointers)
- - we could poll some pids more often
-more pids
-standard obd2 support (automatic?)
-more ui (with touch?)
-data recording to sd card
-IMU widget
--->
+
+## Decouple OBD PIDs and UI
+The current implementation has the OBD PIDs and the UI tightly coupled.
+The `UIManager` class owns the LVGL objects and the `IObdPid` instances, and the `IObdPid` instances are responsible for both updating the UI and processing the OBD data.
+This makes it rather difficult to change the UI or add new PIDs without rather extensive modifications to the UI/OBD code (contained in the `UIParsers` namespace).
+
+Utilizing C++ features such as templates and polymorphism, the OBD PIDs and the UI could be decoupled, perhaps into a templated parsing interface and a UI interface.
+
+
+## Decouple PID storage and polling order
+The current implementation stores the `IObdPid` instances in a `std::vector<std::unique_ptr<IObdPid>>` and polls them in the order they are stored.
+This could be decoupled, allowing for different polling orders or different polling frequencies for different PIDs.
+
+Ideally the order of the PID polling should be configurable, perhaps even by a configuration file stored on the SD card.
+
+
+## More PIDs and standard OBD-II support
+The current implementation only supports the engine RPM PID for the Fiat Punto 1.2 16v.
+Adding support for more PIDs would require reverse engineering the ECU's response data or existing closed-source software to discover additional identifiers.
+Once the PIDs are known, they can be added to the project by creating new `IObdPid` instances and registering them with the `UIManager`.
+
+Another feature that could be added is support for standard OBD-II PIDs, which would allow the project to work with a wider range of vehicles.
+This would likely require extensive modifications to the overall architecture, as the current implementation is tightly coupled to a single communication protocol and dynamically selecting different protocols is not easily achievable.
+A configuration file could then be used to select the protocol and the PIDs to poll.
+
+## More advanced UI
+The current implementation only displays the engine RPM on a gauge widget.
+The UI could be enhanced to display more information or take into account the user's touch input.
+
+The current UI simply displays the latest measured values on the screen, but it could be enhanced to include smoothing of the values with animations to move the gauge needle more smoothly.
+
+
+## Data logging
+As the development board contains an SD card slot, data logging could be implemented to store the measured values on the SD card for later analysis.
+Debug logs could also be stored in the case of an error with the communication.
+
+
+## IMU widget
+The development board contains a QMI8658 6-axis IMU.
+As it is intended to be used in a vehicle, it could be used to measure the vehicle's acceleration and display it on the LCD.
+
+Both lateral and forward acceleration could be measured, accurately conveying the vehicle's dynamics to the driver.
